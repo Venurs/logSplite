@@ -9,16 +9,16 @@ import (
 )
 
 type LogProcess struct {
-	LogPath   string
-	SplitPath string
-	LogChanel chan string
-	SplitRes  chan LogSplitRes
+	LogPath     string
+	SplitPath   string
+	LogChanel   chan string
+	SplitRes    chan LogSplitRes
 	LOGFilePool FilePool
 }
 
 type LogSplitRes struct {
 	Date     string
-	SplitSli [] string
+	SplitSli []string
 }
 
 func ReadLine(r *bufio.Reader) (string, error) {
@@ -45,10 +45,13 @@ func fileExists(filename string) bool {
 	}
 }
 
-func (lp *LogProcess) Read(wg *sync.WaitGroup) {
+func (lp *LogProcess) Read(wg *sync.WaitGroup, date *string) {
 	//日志文件读取
-
-	f, _ := os.Open(lp.LogPath)
+	fmt.Println("start read log")
+	f, err := os.Open(lp.LogPath)
+	if err != nil {
+		panic(err.Error())
+	}
 	defer func() {
 		f.Close()
 
@@ -56,6 +59,19 @@ func (lp *LogProcess) Read(wg *sync.WaitGroup) {
 	r := bufio.NewReader(f)
 	for {
 		context, err := ReadLine(r)
+		if *date != "ALL" && err == nil {
+			var logDate string
+			if len(context) > 10 {
+				logDate = context[:10]
+			} else {
+				continue
+			}
+			//logDateParse, _ := time.Parse("2006-01-02", logDate)
+			//dateParse, _ := time.Parse("2006-01-02", *date)
+			if logDate != *date {
+				continue
+			}
+		}
 		if err != nil {
 			lp.LogChanel <- "END"
 			break
@@ -69,10 +85,8 @@ func (lp *LogProcess) Read(wg *sync.WaitGroup) {
 func (lp *LogProcess) Split(wg *sync.WaitGroup) {
 	//日志文件分割
 	defer wg.Done()
-	logSp := LogSplitRes{
-
-	}
-	var nilSli [] string
+	logSp := LogSplitRes{}
+	var nilSli []string
 	for {
 		log := <-lp.LogChanel
 		if log == "END" {
@@ -105,7 +119,7 @@ func (lp *LogProcess) Split(wg *sync.WaitGroup) {
 	}
 }
 
-func (lp *LogProcess,) WriteSlice(wg *sync.WaitGroup) {
+func (lp *LogProcess) WriteSlice(wg *sync.WaitGroup) {
 	//写入, 每次写入一个切片的日志
 	defer wg.Done()
 	for {
@@ -141,13 +155,13 @@ func (lp *LogProcess,) WriteSlice(wg *sync.WaitGroup) {
 	}
 }
 
-func (lp *LogProcess)WriteFilePool(wg *sync.WaitGroup)  {
+func (lp *LogProcess) WriteFilePool(wg *sync.WaitGroup) {
 	defer wg.Done()
-	for  {
-		log := <- lp.LogChanel
-		if log == "END"{
+	for {
+		log := <-lp.LogChanel
+		if log == "END" {
 			break
-		}else {
+		} else {
 			var date string
 			if len(log) > 10 {
 				date = log[:10]
@@ -157,7 +171,7 @@ func (lp *LogProcess)WriteFilePool(wg *sync.WaitGroup)  {
 			dateSplit := strings.Split(date, "-")
 			filePath := strings.Join(dateSplit, "/")
 			filePath = lp.SplitPath + filePath
-			if fileExists(filePath){
+			if fileExists(filePath) {
 				file := lp.LOGFilePool.GetFileObj(filePath + "/action.log")
 				w := bufio.NewWriter(&file)
 				_, err := w.WriteString(log + "\n")
@@ -170,5 +184,3 @@ func (lp *LogProcess)WriteFilePool(wg *sync.WaitGroup)  {
 	}
 	lp.LOGFilePool.CloseFilePool()
 }
-
-
